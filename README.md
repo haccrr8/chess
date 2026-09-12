@@ -15,3 +15,13 @@ A modern cyber-themed Chess game built for Android using Kotlin and Jetpack Comp
 - **Timers & Move Ticker**: Independent 5-minute circular timers for both players and live move history ticker.
 - **Controls**: Undo move, Offer Draw, Resign, and Reset with confirmation dialogs.
 - **Custom Adaptive Icon**: Cyber knight silhouette emblem with adaptive launcher icon support.
+
+## 📥 Download & Install APK
+
+This repository is configured with **GitHub Actions** to automatically build the Android APK:
+
+1. Push this repository to GitHub.
+2. Go to the **Actions** tab on your GitHub repository.
+3. Click on the latest workflow run: **"Build Android APK"**.
+4. Under **Artifacts**, download **`NinjaChess-APK`** (contains `app-debug.apk`).
+5. Transfer or download the APK directly onto your Android phone and install it!
