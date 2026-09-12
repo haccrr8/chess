@@ -170,9 +170,10 @@ object ChessEngine {
                     if (!isKingInCheck(colorKey, board)) {
                         val kingSideRights = if (isWhite) castleRights.whiteKingSide else castleRights.blackKingSide
                         val queenSideRights = if (isWhite) castleRights.whiteQueenSide else castleRights.blackQueenSide
+                        val rookPiece = if (isWhite) 'R' else 'r'
 
                         // King-side castling (col 6)
-                        if (kingSideRights && isEmpty(r, 5) && isEmpty(r, 6) &&
+                        if (kingSideRights && board[r][7] == rookPiece && isEmpty(r, 5) && isEmpty(r, 6) &&
                             !isSquareAttacked(Position(r, 5), enemyColor, board) &&
                             !isSquareAttacked(Position(r, 6), enemyColor, board)
                         ) {
@@ -180,7 +181,7 @@ object ChessEngine {
                         }
 
                         // Queen-side castling (col 2)
-                        if (queenSideRights && isEmpty(r, 1) && isEmpty(r, 2) && isEmpty(r, 3) &&
+                        if (queenSideRights && board[r][0] == rookPiece && isEmpty(r, 1) && isEmpty(r, 2) && isEmpty(r, 3) &&
                             !isSquareAttacked(Position(r, 2), enemyColor, board) &&
                             !isSquareAttacked(Position(r, 3), enemyColor, board)
                         ) {
@@ -225,6 +226,21 @@ object ChessEngine {
 
         return rawMoves.filter { move ->
             val tempBoard = cloneBoard(board)
+            // Handle en passant capture square on simulated board
+            if (piece.lowercaseChar() == 'p' && enPassantTarget != null && move.to == enPassantTarget) {
+                val capRow = if (piece == 'P') move.to.row + 1 else move.to.row - 1
+                tempBoard[capRow][move.to.col] = ChessPieces.EMPTY
+            }
+            // Handle castling rook movement on simulated board
+            if (piece.lowercaseChar() == 'k' && abs(pos.col - move.to.col) == 2) {
+                if (move.to.col == 6) {
+                    tempBoard[pos.row][5] = tempBoard[pos.row][7]
+                    tempBoard[pos.row][7] = ChessPieces.EMPTY
+                } else if (move.to.col == 2) {
+                    tempBoard[pos.row][3] = tempBoard[pos.row][0]
+                    tempBoard[pos.row][0] = ChessPieces.EMPTY
+                }
+            }
             tempBoard[move.to.row][move.to.col] = tempBoard[pos.row][pos.col]
             tempBoard[pos.row][pos.col] = ChessPieces.EMPTY
             !isKingInCheck(color, tempBoard)
@@ -267,14 +283,87 @@ object ChessEngine {
         return allMoves
     }
 
+    // Piece-Square Tables (from White's perspective; flip row for Black)
+    private val pawnPST = intArrayOf(
+        0,  0,  0,  0,  0,  0,  0,  0,
+        50, 50, 50, 50, 50, 50, 50, 50,
+        10, 10, 20, 30, 30, 20, 10, 10,
+        5,  5, 10, 25, 25, 10,  5,  5,
+        0,  0,  0, 20, 20,  0,  0,  0,
+        5, -5,-10,  0,  0,-10, -5,  5,
+        5, 10, 10,-20,-20, 10, 10,  5,
+        0,  0,  0,  0,  0,  0,  0,  0
+    )
+
+    private val knightPST = intArrayOf(
+        -50,-40,-30,-30,-30,-30,-40,-50,
+        -40,-20,  0,  0,  0,  0,-20,-40,
+        -30,  0, 10, 15, 15, 10,  0,-30,
+        -30,  5, 15, 20, 20, 15,  5,-30,
+        -30,  0, 15, 20, 20, 15,  0,-30,
+        -30,  5, 10, 15, 15, 10,  5,-30,
+        -40,-20,  0,  5,  5,  0,-20,-40,
+        -50,-40,-30,-30,-30,-30,-40,-50
+    )
+
+    private val bishopPST = intArrayOf(
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5, 10, 10,  5,  0,-10,
+        -10,  5,  5, 10, 10,  5,  5,-10,
+        -10,  0, 10, 10, 10, 10,  0,-10,
+        -10, 10, 10, 10, 10, 10, 10,-10,
+        -10,  5,  0,  0,  0,  0,  5,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20
+    )
+
+    private val kingPST = intArrayOf(
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -20,-30,-30,-40,-40,-30,-30,-20,
+        -10,-20,-20,-20,-20,-20,-20,-10,
+        20, 20,  0,  0,  0,  0, 20, 20,
+        20, 30, 10,  0,  0, 10, 30, 20
+    )
+
+    fun calculateMaterialScores(board: Board): Pair<Int, Int> {
+        var white = 0
+        var black = 0
+        val baseValues = mapOf(
+            'p' to 1, 'n' to 3, 'b' to 3, 'r' to 5, 'q' to 9,
+            'P' to 1, 'N' to 3, 'B' to 3, 'R' to 5, 'Q' to 9
+        )
+        for (r in 0..7) {
+            for (c in 0..7) {
+                val piece = board[r][c]
+                val v = baseValues[piece] ?: continue
+                if (ChessPieces.isWhite(piece)) white += v
+                else black += v
+            }
+        }
+        return white to black
+    }
+
     fun evaluateBoard(board: Board): Int {
         var total = 0
         for (r in 0..7) {
             for (c in 0..7) {
                 val piece = board[r][c]
-                if (piece != ChessPieces.EMPTY) {
-                    total += ChessPieces.values[piece] ?: 0
+                if (piece == ChessPieces.EMPTY) continue
+                val base = ChessPieces.values[piece] ?: 0
+                val isW = ChessPieces.isWhite(piece)
+                val sqIndex = if (isW) r * 8 + c else (7 - r) * 8 + c
+                val pst = when (piece.lowercaseChar()) {
+                    'p' -> pawnPST[sqIndex]
+                    'n' -> knightPST[sqIndex]
+                    'b' -> bishopPST[sqIndex]
+                    'k' -> kingPST[sqIndex]
+                    else -> 0
                 }
+                val pieceValue = if (isW) (base - pst) else (base + pst)
+                total += pieceValue
             }
         }
         return total
@@ -298,7 +387,7 @@ object ChessEngine {
 
         if (allMoves.isEmpty()) {
             if (isKingInCheck(color, board)) {
-                return if (isMaximizing) -9999 else 9999
+                return if (isMaximizing) -99999 - depth else 99999 + depth
             }
             return 0
         }
@@ -332,26 +421,202 @@ object ChessEngine {
         }
     }
 
-    fun findBestMoveForBlack(
+    fun findBestMove(
+        color: PlayerColor,
         board: Board,
         castleRights: CastleRights,
-        enPassantTarget: Position?
+        enPassantTarget: Position?,
+        depth: Int = 2,
+        isNoviceRandom: Boolean = false
     ): Move? {
+        val allMoves = getAllLegalMoves(color, board, castleRights, enPassantTarget)
+        if (allMoves.isEmpty()) return null
+
+        if (isNoviceRandom && allMoves.size > 1 && kotlin.random.Random.nextInt(100) < 30) {
+            return allMoves.random()
+        }
+
         var bestMove: Move? = null
-        var bestValue = Int.MIN_VALUE
-        val allMoves = getAllLegalMoves(PlayerColor.BLACK, board, castleRights, enPassantTarget)
+        val isBlack = color == PlayerColor.BLACK
 
-        for (move in allMoves) {
-            val tempBoard = cloneBoard(board)
-            tempBoard[move.to.row][move.to.col] = tempBoard[move.from.row][move.from.col]
-            tempBoard[move.from.row][move.from.col] = ChessPieces.EMPTY
+        if (isBlack) {
+            var bestValue = Int.MIN_VALUE
+            for (move in allMoves.shuffled()) {
+                val tempBoard = cloneBoard(board)
+                tempBoard[move.to.row][move.to.col] = tempBoard[move.from.row][move.from.col]
+                tempBoard[move.from.row][move.from.col] = ChessPieces.EMPTY
 
-            val boardValue = minimax(tempBoard, 2, Int.MIN_VALUE, Int.MAX_VALUE, false, castleRights, null)
-            if (boardValue > bestValue) {
-                bestValue = boardValue
-                bestMove = move
+                val boardValue = minimax(tempBoard, depth - 1, Int.MIN_VALUE, Int.MAX_VALUE, false, castleRights, null)
+                if (boardValue > bestValue) {
+                    bestValue = boardValue
+                    bestMove = move
+                }
+            }
+        } else {
+            var bestValue = Int.MAX_VALUE
+            for (move in allMoves.shuffled()) {
+                val tempBoard = cloneBoard(board)
+                tempBoard[move.to.row][move.to.col] = tempBoard[move.from.row][move.from.col]
+                tempBoard[move.from.row][move.from.col] = ChessPieces.EMPTY
+
+                val boardValue = minimax(tempBoard, depth - 1, Int.MIN_VALUE, Int.MAX_VALUE, true, castleRights, null)
+                if (boardValue < bestValue) {
+                    bestValue = boardValue
+                    bestMove = move
+                }
             }
         }
-        return bestMove
+        return bestMove ?: allMoves.firstOrNull()
+    }
+
+    fun generateSan(
+        from: Position,
+        to: Position,
+        piece: Char,
+        isCapture: Boolean,
+        isCheck: Boolean,
+        isCheckmate: Boolean,
+        promotionPiece: Char?
+    ): String {
+        val type = piece.uppercaseChar()
+        val toCoord = to.toAlgebraic()
+        val fromFile = ('a'.code + from.col).toChar()
+
+        // Castling
+        if (type == 'K' && abs(from.col - to.col) == 2) {
+            val castle = if (to.col == 6) "O-O" else "O-O-O"
+            return when {
+                isCheckmate -> "$castle#"
+                isCheck -> "$castle+"
+                else -> castle
+            }
+        }
+
+        val piecePrefix = when (type) {
+            'P' -> if (isCapture) "$fromFile" else ""
+            'N' -> "N"
+            'B' -> "B"
+            'R' -> "R"
+            'Q' -> "Q"
+            'K' -> "K"
+            else -> ""
+        }
+
+        val captureStr = if (isCapture) "x" else ""
+        val promoStr = if (promotionPiece != null) "=${promotionPiece.uppercaseChar()}" else ""
+        val checkStr = when {
+            isCheckmate -> "#"
+            isCheck -> "+"
+            else -> ""
+        }
+
+        return "$piecePrefix$captureStr$toCoord$promoStr$checkStr"
+    }
+
+    fun generateFen(
+        board: Board,
+        turn: PlayerColor,
+        castleRights: CastleRights,
+        enPassantTarget: Position?,
+        halfMoves: Int = 0,
+        fullMoves: Int = 1
+    ): String {
+        val sb = StringBuilder()
+        for (r in 0..7) {
+            var emptyCount = 0
+            for (c in 0..7) {
+                val piece = board[r][c]
+                if (piece == ChessPieces.EMPTY) {
+                    emptyCount++
+                } else {
+                    if (emptyCount > 0) {
+                        sb.append(emptyCount)
+                        emptyCount = 0
+                    }
+                    sb.append(piece)
+                }
+            }
+            if (emptyCount > 0) sb.append(emptyCount)
+            if (r < 7) sb.append('/')
+        }
+
+        sb.append(if (turn == PlayerColor.WHITE) " w " else " b ")
+
+        val cr = StringBuilder()
+        if (castleRights.whiteKingSide) cr.append('K')
+        if (castleRights.whiteQueenSide) cr.append('Q')
+        if (castleRights.blackKingSide) cr.append('k')
+        if (castleRights.blackQueenSide) cr.append('q')
+        if (cr.isEmpty()) cr.append('-')
+        sb.append(cr).append(' ')
+
+        sb.append(enPassantTarget?.toAlgebraic() ?: "-")
+        sb.append(" $halfMoves $fullMoves")
+
+        return sb.toString()
+    }
+
+    fun isDrawByInsufficientMaterial(board: Board): Boolean {
+        val whitePieces = mutableListOf<Pair<Char, Position>>()
+        val blackPieces = mutableListOf<Pair<Char, Position>>()
+
+        for (r in 0..7) {
+            for (c in 0..7) {
+                val p = board[r][c]
+                if (p == ChessPieces.EMPTY) continue
+                if (ChessPieces.isWhite(p)) whitePieces.add(p to Position(r, c))
+                else blackPieces.add(p to Position(r, c))
+            }
+        }
+
+        // Pawns, rooks, queens can checkmate
+        val hasMajorOrPawn = (whitePieces + blackPieces).any { (p, _) ->
+            p.lowercaseChar() in listOf('p', 'r', 'q')
+        }
+        if (hasMajorOrPawn) return false
+
+        val whiteNonKings = whitePieces.filter { it.first != 'K' }
+        val blackNonKings = blackPieces.filter { it.first != 'k' }
+
+        // King vs King
+        if (whiteNonKings.isEmpty() && blackNonKings.isEmpty()) return true
+
+        // King + Minor vs King
+        if (whiteNonKings.size == 1 && blackNonKings.isEmpty()) return true
+        if (blackNonKings.size == 1 && whiteNonKings.isEmpty()) return true
+
+        // King + Bishop vs King + Bishop on same colored squares
+        if (whiteNonKings.size == 1 && blackNonKings.size == 1) {
+            val (wp, wPos) = whiteNonKings.first()
+            val (bp, bPos) = blackNonKings.first()
+            if (wp == 'B' && bp == 'b') {
+                val wSquareIsLight = (wPos.row + wPos.col) % 2 == 0
+                val bSquareIsLight = (bPos.row + bPos.col) % 2 == 0
+                if (wSquareIsLight == bSquareIsLight) return true
+            }
+        }
+
+        return false
+    }
+
+    fun getPositionKey(
+        board: Board,
+        turn: PlayerColor,
+        castleRights: CastleRights,
+        enPassantTarget: Position?
+    ): String {
+        val sb = StringBuilder(80)
+        for (r in 0..7) {
+            for (c in 0..7) {
+                sb.append(board[r][c])
+            }
+        }
+        sb.append(turn.name)
+        sb.append(castleRights.whiteKingSide)
+        sb.append(castleRights.whiteQueenSide)
+        sb.append(castleRights.blackKingSide)
+        sb.append(castleRights.blackQueenSide)
+        sb.append(enPassantTarget?.toAlgebraic() ?: "-")
+        return sb.toString()
     }
 }
