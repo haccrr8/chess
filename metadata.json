@@ -1,0 +1,6 @@
+{
+  "name": "Ninja Chess",
+  "description": "Ninja Chess Grandmaster Edition Pro with cyber neon aesthetics, AI opponent, 2-player mode, sound effects, and Ryuk theme",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
